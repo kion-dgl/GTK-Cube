@@ -17,7 +17,7 @@ GLuint vbo_cube_vertices;
 GLuint ibo_cube_elements;
 GLuint program, vao;
 GLint attribute_coord3d, attribute_v_color;
-GLint uniform_mvp;
+GLint uniform_mvp, uniform_projection, uniform_view;
 
 int main(int argc, char *argv[]) {
 
@@ -54,7 +54,8 @@ static void on_realize(GtkGLArea *area) {
 		fprintf(stderr, "Unknown error\n");
 		return;
 	}
-
+	
+	gtk_gl_area_set_has_depth_buffer(area, TRUE);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 	glGenVertexArrays(1, &vao);
@@ -125,7 +126,35 @@ static void on_realize(GtkGLArea *area) {
 		return;
 	}
 
-	g_timeout_add(1000, on_idle, (void*)area);
+	uniform_name = "projection";
+	uniform_projection = glGetUniformLocation(program, uniform_name);
+	if (uniform_projection == -1) {
+		fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
+		return;
+	}
+
+	uniform_name = "view";
+	uniform_view = glGetUniformLocation(program, uniform_name);
+	if (uniform_view == -1) {
+		fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
+		return;
+	}
+
+	vec3 eye = { 0.0f, 2.0f, 4.0f };
+	vec3 target = { 0.0f, 0.0f, 0.0f };
+	vec3 axis = { 0.0f, 1.0f, 0.0f };
+
+	mat4 mvp, projection, view;
+	mat4_identity(mvp);
+	mat4_perspective(45.0f, 1.0f*WIDTH/HEIGHT, 0.1f, 10.0f, projection);
+	mat4_lookat(eye, target, axis, view);
+
+	glUseProgram(program);
+	glUniformMatrix4fv(uniform_projection, 1, GL_FALSE, projection);
+	glUniformMatrix4fv(uniform_view, 1, GL_FALSE, view);
+	glUniformMatrix4fv(uniform_mvp, 1, GL_FALSE, mvp);
+
+	g_timeout_add(20, on_idle, (void*)area);
 }
 
 static void on_render(GtkGLArea *area, GdkGLContext *context) {
@@ -133,7 +162,6 @@ static void on_render(GtkGLArea *area, GdkGLContext *context) {
 	int size;
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
-	glUseProgram(program);
 	glEnableVertexAttribArray(attribute_coord3d);
 	glEnableVertexAttribArray(attribute_v_color);
 
@@ -168,26 +196,10 @@ static void on_render(GtkGLArea *area, GdkGLContext *context) {
 
 static gboolean on_idle(gpointer data) {
 	
-	timer += 0.2f;
-	float angle =  timer / 1000.0 * 45;
-	float rad = angle * M_PI / 180.0;
+	timer -= 0.008f;
 
-	vec3 eye = { 0.0f, 2.0f, 0.0f };
-	vec3 target = { 0.0f, 0.0f, -4.0f };
-	vec3 axis = { 0.0f, 1.0f, 0.0f };
-	vec3 t = { 0.0, 0.0, -4.0f };
-
-	mat4 mvp, pos, rot, projection, view;
-	mat4_identity(mvp);
-	mat4_perspective(45.0f, 1.0f*WIDTH/HEIGHT, 0.1f, 10.0f, projection);
-	mat4_lookat(eye, target, axis, view);
-	mat4_translate(t, pos);
-	mat4_rotate_y(rad, rot);
-
-	mat4_multiply(mvp, projection, mvp);
-	mat4_multiply(mvp, view, mvp);
-	mat4_multiply(mvp, pos, mvp);
-	mat4_multiply(mvp, rot, mvp);
+	mat4 mvp;
+	mat4_rotate_y(timer, mvp);
 
 	glUseProgram(program);
 	glUniformMatrix4fv(uniform_mvp, 1, GL_FALSE, mvp);
